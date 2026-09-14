@@ -15,8 +15,23 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 from django.contrib import admin
-from django.urls import path
+from django.http import HttpResponse
+from django.urls import include, path
+
+
+def index(request):
+    return HttpResponse("欢迎来到我的博客！")
+
 
 urlpatterns = [
+    # 首页
+    path('', index),
+
+    # 管理后台
     path('admin/', admin.site.urls),
+
+    # 将 blog 应用的路由挂载到 /api/blog/
+    # 类比 FastAPI:
+    # router.include_router(blog_router, prefix="/api/blog")
+    path('api/blog/', include('blog.urls')),
 ]
