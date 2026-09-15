@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.http import HttpResponse
+from .models import Article, Comment, Tag
 import json
 
 
@@ -10,81 +11,124 @@ def hello(request):
 
 
 def health_check(request):
-    """
-    健康检查接口
-
-    类比 FastAPI:
-    @router.get("/health")
-    async def health():
-        return {"status": "ok"}
-    """
+    """健康检查接口"""
     return JsonResponse({
         "status": "ok",
         "framework": "Django",
-        "version": "1.0",
+        "version": "2.0",
+        "db": "connected",
     })
+
+
+def _article_to_dict(article):
+    """将 Article 对象转为字典（类似 FastAPI 的 Schema 序列化）"""
+    return {
+        "id": article.id,
+        "slug": article.slug,
+        "title": article.title,
+        "description": article.description,
+        "body": article.body,
+        "tagList": list(article.tags.values_list('name', flat=True)),
+        "createdAt": article.created_at.isoformat(),
+        "updatedAt": article.updated_at.isoformat(),
+        "author": {
+            "username": article.author.username,
+            "bio": getattr(article.author, 'bio', ''),
+        },
+        "favoritesCount": 0,
+    }
 
 
 def article_list(request):
     """
-    文章列表接口（模拟）
+    文章列表（从数据库查询）
 
-    类比 FastAPI:
-    @router.get("/articles")
-    async def list_articles(skip: int = 0, limit: int = 20):
-        ...
+    支持查询参数：
+    - skip: 跳过数量
+    - limit: 返回数量
+    - tag: 标签过滤
+    - author: 作者过滤
     """
-    # 从查询参数获取分页信息（类似 FastAPI 的 Query 参数）
     skip = int(request.GET.get("skip", 0))
     limit = int(request.GET.get("limit", 20))
+    tag = request.GET.get("tag")
+    author = request.GET.get("author")
 
-    # 模拟数据
-    articles = [
-        {
-            "id": 1,
-            "title": "Django 入门教程",
-            "description": "学习 Django 的基础知识",
-            "tagList": ["Python", "Django"],
-        },
-        {
-            "id": 2,
-            "title": "Django REST Framework",
-            "description": "使用 DRF 构建 API",
-            "tagList": ["Python", "DRF", "API"],
-        },
-    ]
+    # 构建查询集（QuerySet）
+    # 类比 FastAPI: db.query(Article).filter(...)
+    queryset = Article.objects.all()
 
-    # 分页处理
-    paginated = articles[skip:skip + limit]
+    if tag:
+        queryset = queryset.filter(tags__name=tag)
+    if author:
+        queryset = queryset.filter(author__username=author)
+
+    # 计算总数（在分页前）
+    total = queryset.count()
+
+    # 分页
+    queryset = queryset[skip:skip + limit]
+
+    # 序列化
+    articles = [_article_to_dict(a) for a in queryset]
 
     return JsonResponse({
-        "articles": paginated,
-        "articlesCount": len(paginated),
+        "articles": articles,
+        "articlesCount": total,
     })
 
 
 def article_detail(request, article_id):
     """
-    文章详情接口（模拟）
-
-    类比 FastAPI:
-    @router.get("/articles/{article_id}")
-    async def get_article(article_id: int):
-        ...
-
-    注意：Django 的路径参数直接在 URL 中定义，通过函数参数接收
+    文章详情（从数据库查询）
     """
-    # 模拟数据库查询
-    articles = {
-        1: {"id": 1, "title": "Django 入门教程", "body": "Django 是一个强大的框架..."},
-        2: {"id": 2, "title": "DRF 教程", "body": "Django REST Framework 可以快速构建 API..."},
-    }
-
-    article = articles.get(article_id)
-    if not article:
+    try:
+        article = Article.objects.select_related('author').get(id=article_id)
+    except Article.DoesNotExist:
         return JsonResponse(
             {"error": "文章不存在"},
             status=404
         )
 
-    return JsonResponse({"article": article})
+    return JsonResponse({
+        "article": _article_to_dict(article),
+    })
+
+
+def article_comments(request, article_id):
+    """
+    文章评论列表
+    """
+    try:
+        article = Article.objects.get(id=article_id)
+    except Article.DoesNotExist:
+        return JsonResponse(
+            {"error": "文章不存在"},
+            status=404
+        )
+
+    comments = Comment.objects.filter(article=article).select_related('author')
+
+    comment_list = [
+        {
+            "id": c.id, # type: ignore
+            "body": c.body,
+            "createdAt": c.created_at.isoformat(),
+            "author": {
+                "username": c.author.username,
+            },
+        }
+        for c in comments
+    ]
+
+    return JsonResponse({
+        "comments": comment_list,
+        "commentsCount": len(comment_list),
+    })
+
+
+def tag_list(request):
+    """标签列表"""
+    tags = Tag.objects.all()
+    tag_names = list(tags.values_list('name', flat=True))
+    return JsonResponse({"tags": tag_names})
