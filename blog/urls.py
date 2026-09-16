@@ -15,5 +15,3 @@ urlpatterns = [
     # 标签
     path("tags/", views.tag_list, name="tag-list"),
 ]
-
-
