@@ -50,6 +50,14 @@ REST_FRAMEWORK = {
     # 时间格式
     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S%z',
 
+    # ===== 新增：全局过滤器 =====
+    # 搜索：?search=关键字
+    # 排序：?ordering=-created_at
+    'DEFAULT_FILTER_BACKENDS': [
+        'rest_framework.filters.SearchFilter',
+        'rest_framework.filters.OrderingFilter',
+    ],
+
     # 认证配置（后续课程详细讲解）
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',

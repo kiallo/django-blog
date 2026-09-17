@@ -173,3 +173,76 @@ class ArticleCreateSerializer(serializers.Serializer):
         if len(value.strip()) < 3:
             raise serializers.ValidationError("标题至少需要3个字符")
         return value.strip()
+
+
+class ArticleWriteSerializer(serializers.ModelSerializer):
+    """
+    文章写入序列化器（create / update / partial_update 共用）
+
+    与 ArticleCreateSerializer 的区别：
+    - 继承 ModelSerializer，字段自动从模型来
+    - 支持 update（ArticleCreateSerializer 只有 create）
+
+    注意 tag_list 是"只写"字段：POST 进来，但不序列化出去
+    """
+    tag_list = serializers.ListField(
+        child=serializers.CharField(max_length=50),
+        required=False,
+        write_only=True,
+    )
+
+    class Meta:
+        model = Article
+        fields = ['title', 'description', 'body', 'tag_list']
+        extra_kwargs = {
+            'description': {'required': False, 'allow_blank': True},
+        }
+
+    def validate_title(self, value):
+        if len(value.strip()) < 3:
+            raise serializers.ValidationError("标题至少需要3个字符")
+        return value.strip()
+
+    def _sync_tags(self, article, tag_names):
+        """同步标签：不存在就新建，最后整体替换（set 会自动处理增删）"""
+        tags = []
+        for name in tag_names:
+            name = name.strip()
+            if name:
+                tag, _ = Tag.objects.get_or_create(name=name)
+                tags.append(tag)
+        article.tags.set(tags)
+
+    def create(self, validated_data):
+        # author 不在 fields 里，由视图的 perform_create 通过 serializer.save(author=...) 注入
+        tag_names = validated_data.pop('tag_list', [])
+        article = Article.objects.create(**validated_data)
+        self._sync_tags(article, tag_names)
+        return article
+
+    def update(self, instance, validated_data):
+        # 用 pop(..., None) 而不是 default=[]：
+        # PATCH 没传 tag_list 时应该是"不改标签"，而不是"清空标签"
+        tag_names = validated_data.pop('tag_list', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+
+        if tag_names is not None:
+            self._sync_tags(instance, tag_names)
+        return instance
+
+
+class CommentWriteSerializer(serializers.ModelSerializer):
+    """评论写入序列化器"""
+
+    class Meta:
+        model = Comment
+        fields = ['body']
+
+    def validate_body(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("评论内容不能为空")
+        return value

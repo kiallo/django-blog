@@ -5,7 +5,12 @@ Django 模型演示脚本
 演示 Django ORM 的核心操作
 """
 import os
+import sys
+
 import django
+
+# 把项目根目录加入模块搜索路径，保证在 demos/ 下也能 import mysite / blog
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # 设置 Django 环境
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mysite.settings')
