@@ -25,4 +25,37 @@ class IsAuthorOrReadOnly(permissions.BasePermission):
         return obj.author == request.user
 
 
-    
+class IsAuthorOrAdminOrReadOnly(permissions.BasePermission):
+    """
+    读放行；写操作要求：作者本人 或 管理员
+
+    和 IsAuthorOrReadOnly 的区别：给 is_staff 开了后门。
+    实际项目里后台管理员经常需要下架违规内容。
+    """
+    message = "只有作者本人或管理员可以修改/删除"
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        # ⚠️ is_staff 不会自动放行任何权限类，必须自己写这个判断
+        if request.user.is_staff:
+            return True
+        return obj.author == request.user
+
+
+class IsCommentAuthorOrReadOnly(permissions.BasePermission):
+    """评论：只有评论作者能改删"""
+    message = "只有评论作者本人可以修改/删除这条评论"
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return obj.author == request.user
+
+
+class ReadOnly(permissions.BasePermission):
+    """只读权限：任何写操作都拒绝"""
+    message = "该接口只读"
+
+    def has_permission(self, request, view):
+        return request.method in permissions.SAFE_METHODS

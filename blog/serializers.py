@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueValidator
 from django.contrib.auth.models import User
 from .models import Article, Tag, Comment
 
@@ -246,3 +247,85 @@ class CommentWriteSerializer(serializers.ModelSerializer):
         if not value:
             raise serializers.ValidationError("评论内容不能为空")
         return value
+
+
+# ==================== 认证相关（第11课）====================
+
+class RegisterSerializer(serializers.ModelSerializer):
+    """注册序列化器"""
+    # ⚠️ 显式声明 username 是为了替换掉 ModelSerializer 自动加的 UniqueValidator
+    # 自动加的那个报错信息是英文的（"This field must be unique."），这里换成中文
+    username = serializers.CharField(
+        max_length=150,
+        validators=[UniqueValidator(
+            queryset=User.objects.all(),
+            message='该用户名已被注册',
+        )],
+    )
+    password = serializers.CharField(
+        write_only=True,
+        min_length=6,
+        style={'input_type': 'password'},
+        error_messages={'min_length': '密码至少需要6位'},
+    )
+    password2 = serializers.CharField(
+        write_only=True,
+        label='确认密码',
+        style={'input_type': 'password'},
+    )
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'password', 'password2']
+        read_only_fields = ['id']
+
+    def validate(self, attrs):
+        """
+        跨字段校验：写在 validate 里（不是 validate_xxx）
+
+        调用顺序：字段级校验 → 字段级 validate_xxx → 对象级 validate
+        """
+        if attrs['password'] != attrs.pop('password2'):
+            # 抛 ValidationError 时指定字段名，前端好定位
+            raise serializers.ValidationError({'password2': '两次输入的密码不一致'})
+        return attrs
+
+    def create(self, validated_data):
+        # ⚠️ 必须用 create_user，它负责密码哈希
+        # 用 User.objects.create 会把密码明文存进数据库
+        return User.objects.create_user(**validated_data)
+
+
+class LoginSerializer(serializers.Serializer):
+    """登录序列化器（只做校验，不涉及模型保存）"""
+    username = serializers.CharField()
+    password = serializers.CharField(write_only=True, style={'input_type': 'password'})
+
+    def validate(self, attrs):
+        from django.contrib.auth import authenticate
+
+        user = authenticate(
+            request=self.context.get('request'),
+            username=attrs['username'],
+            password=attrs['password'],
+        )
+
+        # ⚠️ 不要区分"用户不存在"和"密码错误" —— 防止攻击者枚举用户名
+        if user is None:
+            raise serializers.ValidationError('用户名或密码错误')
+
+        if not user.is_active:
+            raise serializers.ValidationError('该账号已被禁用')
+
+        attrs['user'] = user
+        return attrs
+
+
+class RefreshSerializer(serializers.Serializer):
+    """刷新 Token 序列化器"""
+    refresh = serializers.CharField()
+
+
+class EmptySerializer(serializers.Serializer):
+    """占位序列化器：给没有请求体的接口用（让可浏览 API 正常渲染）"""
+    pass

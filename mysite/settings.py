@@ -11,6 +11,8 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 from pathlib import Path
+from datetime import timedelta
+from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,35 +40,48 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
     'blog',
 ]
 
 # ===== DRF 配置 =====
 REST_FRAMEWORK = {
-    # 分页配置
+    # ---------- 认证 ----------
+    # ⚠️ 顺序有意义：第一个认证器的 authenticate_header 决定未认证时返回 401 还是 403
+    # RedisJWTAuthentication 继承自 JWTAuthentication，同样返回 'Bearer realm="api"' → 401 ✅
+    # 如果 SessionAuthentication 排在第一位（它返回 None）→ 403
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        # 在 simplejwt 基础上多查一步 Redis 白名单，登出才能真正生效
+        'blog.authentication.RedisJWTAuthentication',
+        'rest_framework.authentication.SessionAuthentication',  # 保留：可浏览 API 要用
+    ],
+
+    # ---------- 权限 ----------
+    # 从 AllowAny 收紧：读接口公开，写接口必须登录
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticatedOrReadOnly',
+    ],
+
+    # ---------- 限流 ----------
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/minute',
+        'user': '200/hour',
+        'login': '5/minute',
+    },
+
+    # ---------- 分页 ----------
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 20,
 
-    # 时间格式
+    # ---------- 其他 ----------
     'DATETIME_FORMAT': '%Y-%m-%dT%H:%M:%S%z',
-
-    # ===== 新增：全局过滤器 =====
-    # 搜索：?search=关键字
-    # 排序：?ordering=-created_at
     'DEFAULT_FILTER_BACKENDS': [
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
-    ],
-
-    # 认证配置（后续课程详细讲解）
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
-    ],
-
-    # 权限配置
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # 暂时允许所有访问
     ],
 }
 
@@ -156,3 +171,32 @@ MAILERS = {
         'BACKEND': 'django.core.mail.backends.console.EmailBackend',
     },
 }
+
+
+# ===== JWT 配置 =====
+SIMPLE_JWT = {
+    # Token 有效期
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=30),   # 短命：被盗了损失也小
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),      # 长命：过期才需要重新登录
+
+    # 刷新时是否轮换 refresh token
+    # True 更安全（旧 refresh 失效），但前端要同步更新本地存的 refresh
+    'ROTATE_REFRESH_TOKENS': False,
+
+    # 认证头格式：Authorization: Bearer <token>
+    # 想和 FastAPI 项目的 "Token xxx" 保持一致，就改成 ('Token',)
+    'AUTH_HEADER_TYPES': ('Bearer',),
+
+    # 用户标识放在哪个 claim
+    'USER_ID_FIELD': 'id',
+    'USER_ID_CLAIM': 'user_id',
+}
+
+# ===== Redis 配置 =====
+# 和 FastAPI 项目复用同一个 Redis 实例，用 db 号隔开：
+#   FastAPI 项目 → db 0
+#   Django 项目  → db 1
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 1
+REDIS_PASSWORD = None       # 没设密码就保持 None

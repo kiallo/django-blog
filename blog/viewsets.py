@@ -14,7 +14,7 @@ from rest_framework.response import Response
 
 from .models import Article, Tag
 from .pagination import ArticlePagination
-from .permissions import IsAuthorOrReadOnly
+from .permissions import IsAuthorOrAdminOrReadOnly
 from .serializers import (
     ArticleDetailSerializer,
     ArticleListSerializer,
@@ -40,7 +40,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     lookup_field = 'slug'
 
     pagination_class = ArticlePagination
-    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrReadOnly]
+    permission_classes = [IsAuthenticatedOrReadOnly, IsAuthorOrAdminOrReadOnly]
 
     # 搜索 + 排序（filter_backends 在 settings 里全局配了）
     search_fields = ['title', 'description', 'body', 'author__username']
@@ -76,6 +76,24 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         """创建时自动补上作者"""
         serializer.save(author=self.request.user)
+
+    def create(self, request, *args, **kwargs):
+        """
+        创建后返回详情表示
+
+        默认实现会回显 ArticleWriteSerializer 的那几个字段（title/description/body/tag_list），
+        连 id、slug 都没有，客户端拿不到刚创建的资源。
+        所以写入用写序列化器，响应换回读序列化器。
+        """
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+
+        article = ArticleDetailSerializer(
+            serializer.instance, context=self.get_serializer_context()
+        )
+        headers = self.get_success_headers(article.data)
+        return Response(article.data, status=status.HTTP_201_CREATED, headers=headers)
 
     # ---------- 自定义动作 ----------
 
