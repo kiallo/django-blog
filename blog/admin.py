@@ -16,7 +16,7 @@ class ArticleAdmin(admin.ModelAdmin):
     list_filter = ['created_at', 'author', 'tags']
     search_fields = ['title', 'body']
     prepopulated_fields = {'slug': ('title',)}  # 根据标题自动生成 slug
-    filter_horizontal = ['tags']  # 多对多选择器（更好用的 UI）
+    filter_horizontal = ['tags', 'favorited_by']  # 多对多选择器（更好用的 UI）
 
 
 @admin.register(Comment)

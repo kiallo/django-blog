@@ -9,7 +9,8 @@ import uuid
 
 from django.conf import settings
 from django.contrib.auth.models import User
-from rest_framework import status, viewsets
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import AuthenticationFailed
 from rest_framework.permissions import AllowAny, IsAdminUser, IsAuthenticated
@@ -29,6 +30,13 @@ from .serializers import (
 from .session_store import get_session_store
 
 logger = logging.getLogger(__name__)
+
+
+# ---------- 文档专用 ----------
+# 注意这里用 inline_serializer 而不是直接写某个序列化器类：
+# 这些接口返回的是 {"access": "...", "user": {...}} 这种拼出来的字典，
+# 不是某个序列化器本身，inline_serializer 才能把整体结构描述出来。
+# 只在生成 schema 时用到，不影响运行时逻辑。
 
 
 class AuthViewSet(viewsets.GenericViewSet):
@@ -77,6 +85,24 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 接口目录 ----------
 
+    @extend_schema(
+        summary='认证接口目录',
+        description='GET /api/v3/auth/ 列出本 ViewSet 全部接口的 URL。',
+        request=None,
+        responses={200: inline_serializer(
+            'AuthIndexResponse',
+            {
+                'register': serializers.CharField(),
+                'login': serializers.CharField(),
+                'refresh': serializers.CharField(),
+                'logout': serializers.CharField(),
+                'me': serializers.CharField(),
+                'mySession': serializers.CharField(),
+                'forceLogout': serializers.CharField(),
+                'online': serializers.CharField(),
+            },
+        )},
+    )
     def list(self, request):
         """
         GET /api/v3/auth/
@@ -103,6 +129,21 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 注册 ----------
 
+    @extend_schema(
+        summary='注册',
+        description='POST /api/v3/auth/register/ 创建新用户。注册成功后不会自动登录，需要再调 login。',
+        request=RegisterSerializer,
+        responses={
+            201: inline_serializer(
+                'RegisterResponse',
+                {
+                    'user': UserSerializer(),
+                    'detail': serializers.CharField(),
+                },
+            ),
+            400: OpenApiResponse(description='用户名已存在 / 两次密码不一致 / 密码少于 6 位'),
+        },
+    )
     @action(detail=False, methods=['post'], url_path='register')
     def register(self, request):
         """POST /api/v3/auth/register/"""
@@ -120,6 +161,26 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 登录 ----------
 
+    @extend_schema(
+        summary='登录',
+        description=(
+            'POST /api/v3/auth/login/ 校验用户名密码，返回 access + refresh，\n'
+            '同时把会话写进 Redis 白名单（带限流，见 throttle_scope = "login"）。'
+        ),
+        request=LoginSerializer,
+        responses={
+            200: inline_serializer(
+                'LoginResponse',
+                {
+                    'access': serializers.CharField(),
+                    'refresh': serializers.CharField(),
+                    'user': UserSerializer(),
+                },
+            ),
+            400: OpenApiResponse(description='用户名或密码错误 / 账号已被禁用'),
+            429: OpenApiResponse(description='登录过于频繁，被限流'),
+        },
+    )
     @action(detail=False, methods=['post'], url_path='login')
     def login(self, request):
         """
@@ -162,6 +223,18 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 刷新 ----------
 
+    @extend_schema(
+        summary='刷新 access token',
+        description='POST /api/v3/auth/refresh/ 用 refresh token 换一个新的 access token（会话已失效则 401）。',
+        request=RefreshSerializer,
+        responses={
+            200: inline_serializer(
+                'RefreshResponse',
+                {'access': serializers.CharField()},
+            ),
+            401: OpenApiResponse(description='刷新令牌无效或已过期，或会话已被登出 / 强制下线'),
+        },
+    )
     @action(detail=False, methods=['post'], url_path='refresh')
     def refresh(self, request):
         """POST /api/v3/auth/refresh/  用 refresh 换新 access"""
@@ -184,6 +257,21 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 登出 ----------
 
+    @extend_schema(
+        summary='登出',
+        description=(
+            'POST /api/v3/auth/logout/ 删除 Redis 里的会话记录。\n'
+            'JWT 签名本身依然有效，但白名单查不到 → 之后的请求一律 401。'
+        ),
+        request=None,
+        responses={
+            200: inline_serializer(
+                'LogoutResponse',
+                {'detail': serializers.CharField()},
+            ),
+            401: OpenApiResponse(description='未登录，或会话已失效（白名单里查不到）'),
+        },
+    )
     @action(detail=False, methods=['post'], url_path='logout')
     def logout(self, request):
         """
@@ -202,11 +290,43 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 当前用户 ----------
 
+    @extend_schema(
+        summary='当前登录用户',
+        description='GET /api/v3/auth/me/ 前端刷新页面时用它恢复登录状态。',
+        request=None,
+        responses={
+            200: UserSerializer,
+            401: OpenApiResponse(description='未登录，或会话已失效（白名单里查不到）'),
+        },
+    )
     @action(detail=False, methods=['get'], url_path='me')
     def me(self, request):
         """GET /api/v3/auth/me/  前端刷新页面时用它恢复登录状态"""
         return Response(self.get_serializer(request.user).data)
 
+    @extend_schema(
+        summary='我的会话详情',
+        description='GET /api/v3/auth/my-session/ 查看自己的会话信息与剩余时间（sid 不会返回给客户端）。',
+        request=None,
+        responses={
+            200: inline_serializer(
+                'MySessionResponse',
+                {
+                    'username': serializers.CharField(),
+                    'login_time': serializers.DateTimeField(
+                        help_text='登录时间（UTC，ISO 8601 字符串）',
+                    ),
+                    'device_info': serializers.CharField(
+                        help_text='登录时的 User-Agent',
+                    ),
+                    'ttl_seconds': serializers.IntegerField(
+                        help_text='会话剩余秒数，-1 表示没有设置过期时间',
+                    ),
+                },
+            ),
+            401: OpenApiResponse(description='会话不存在（未登录或已登出）'),
+        },
+    )
     @action(detail=False, methods=['get'], url_path='my-session')
     def my_session(self, request):
         """GET /api/v3/auth/my-session/  查看自己的会话详情（含剩余时间）"""
@@ -221,6 +341,31 @@ class AuthViewSet(viewsets.GenericViewSet):
 
     # ---------- 管理员：强制下线 ----------
 
+    @extend_schema(
+        summary='强制用户下线【管理员】',
+        description=(
+            'POST /api/v3/auth/force-logout/ 把指定用户的会话从白名单删掉。\n'
+            '权限：仅 is_staff 用户可用。'
+        ),
+        request=inline_serializer(
+            'ForceLogoutBody',
+            {'username': serializers.CharField(help_text='要强制下线的用户名')},
+        ),
+        responses={
+            200: inline_serializer(
+                'ForceLogoutResponse',
+                {
+                    'detail': serializers.CharField(),
+                    'revoked': serializers.BooleanField(
+                        help_text='true = 确实踢下线了；false = 该用户当时不在线',
+                    ),
+                },
+            ),
+            400: OpenApiResponse(description='没传 username'),
+            401: OpenApiResponse(description='未登录，或会话已失效（白名单里查不到）'),
+            403: OpenApiResponse(description='当前用户不是管理员'),
+        },
+    )
     @action(detail=False, methods=['post'], url_path='force-logout')
     def force_logout(self, request):
         """
@@ -244,6 +389,22 @@ class AuthViewSet(viewsets.GenericViewSet):
             'revoked': revoked,
         })
 
+    @extend_schema(
+        summary='在线用户列表【管理员】',
+        description='GET /api/v3/auth/online/ 从 Redis 的在线集合里取当前在线用户名。权限：仅 is_staff 用户可用。',
+        request=None,
+        responses={
+            200: inline_serializer(
+                'OnlineUsersResponse',
+                {
+                    'onlineUsers': serializers.ListField(child=serializers.CharField()),
+                    'count': serializers.IntegerField(),
+                },
+            ),
+            401: OpenApiResponse(description='未登录，或会话已失效（白名单里查不到）'),
+            403: OpenApiResponse(description='当前用户不是管理员'),
+        },
+    )
     @action(detail=False, methods=['get'], url_path='online')
     def online(self, request):
         """GET /api/v3/auth/online/  在线用户列表（权限：见 get_permissions → IsAdminUser）"""

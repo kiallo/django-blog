@@ -59,7 +59,43 @@ class CommentSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'created_at', 'updated_at']
 
 
-class ArticleListSerializer(serializers.ModelSerializer):
+class ArticleFavoriteMixin(serializers.Serializer):
+    """
+    收藏相关的只读字段 —— 列表序列化器和详情序列化器共用
+
+    DRF 的元类会沿着 MRO 收集所有基类里的 _declared_fields，
+    所以在 Mixin 的类体里声明字段，子类自动就拥有它。
+    （注意：这是个"抽象"的 Mixin，不会被实例化，所以不需要 Meta）
+    """
+    favorites_count = serializers.SerializerMethodField()
+    favorited = serializers.SerializerMethodField()
+
+    def get_favorites_count(self, obj):
+        """
+        收藏总数
+
+        ⚠️ 用 len(obj.favorited_by.all()) 而不是 obj.favorited_by.count()：
+        view 的 get_queryset() 里加了 prefetch_related('favorited_by')，
+        .all() 直接命中预取缓存，len() 是内存操作，0 次查询；
+        .count() 在预取场景下虽然也走缓存，但换成 filter().exists() 就必然查库了。
+        """
+        return len(obj.favorited_by.all())
+
+    def get_favorited(self, obj):
+        """
+        当前登录用户是否收藏了这一篇
+
+        这里在 Python 里遍历判断，而不是
+        `obj.favorited_by.filter(pk=request.user.pk).exists()` ——
+        后者会无视预取缓存，每篇文章多一次查询（页面上 5 篇就是 5 次）。
+        """
+        request = self.context.get('request')
+        if request is None or not request.user.is_authenticated:
+            return False
+        return any(user.pk == request.user.pk for user in obj.favorited_by.all())
+
+
+class ArticleListSerializer(ArticleFavoriteMixin, serializers.ModelSerializer):
     """
     文章列表序列化器（轻量版，不含正文）
 
@@ -69,20 +105,20 @@ class ArticleListSerializer(serializers.ModelSerializer):
         title: str
         description: str
         # 不含 body
-    """
-    # 嵌套序列化器
-    author = AuthorSerializer(read_only=True)
 
-    # 自定义字段名
+    ⚠️ Mixin 必须写在 ModelSerializer 前面：DRF 的元类按 MRO 收集字段，
+       Meta.fields 里的 'favorites_count' / 'favorited' 只有从 Mixin 拿到声明，
+       才不会被当成"模型上不存在的字段"而报 ImproperlyConfigured。
+    """
+    author = AuthorSerializer(read_only=True)
     tag_list = serializers.SerializerMethodField()
-    favorites_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Article
         fields = [
             'id', 'slug', 'title', 'description',
             'tag_list', 'created_at', 'updated_at',
-            'author', 'favorites_count',
+            'author', 'favorites_count', 'favorited',
         ]
 
     def get_tag_list(self, obj):
@@ -93,12 +129,8 @@ class ArticleListSerializer(serializers.ModelSerializer):
         """
         return list(obj.tags.values_list('name', flat=True))
 
-    def get_favorites_count(self, obj):
-        """获取收藏数（暂时返回 0）"""
-        return 0
 
-
-class ArticleDetailSerializer(serializers.ModelSerializer):
+class ArticleDetailSerializer(ArticleFavoriteMixin, serializers.ModelSerializer):
     """
     文章详情序列化器（包含正文和评论）
 
@@ -109,21 +141,18 @@ class ArticleDetailSerializer(serializers.ModelSerializer):
     author = AuthorSerializer(read_only=True)
     tag_list = serializers.SerializerMethodField()
     comments = CommentSerializer(many=True, read_only=True)
-    favorites_count = serializers.SerializerMethodField()
 
     class Meta:
         model = Article
         fields = [
             'id', 'slug', 'title', 'description', 'body',
             'tag_list', 'created_at', 'updated_at',
-            'author', 'comments', 'favorites_count',
+            'author', 'comments', 'favorites_count', 'favorited',
         ]
 
     def get_tag_list(self, obj):
         return list(obj.tags.values_list('name', flat=True))
 
-    def get_favorites_count(self, obj):
-        return 0
 
 
 class ArticleCreateSerializer(serializers.Serializer):

@@ -88,6 +88,15 @@ class Article(models.Model):
         verbose_name="标签",
     )
 
+    # 收藏：多对多（Django 自动建中间表 articles_favorited_by）
+    # related_name="favorite_articles" → user.favorite_articles.all() 拿到该用户收藏的文章
+    favorited_by = models.ManyToManyField(
+        User,
+        related_name="favorite_articles",
+        blank=True,
+        verbose_name="收藏者",
+    )
+
     # 自动时间字段
     created_at = models.DateTimeField(
         auto_now_add=True,

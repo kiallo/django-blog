@@ -151,7 +151,7 @@ def main():
     }, format="json")
     print(f"  POST /articles/  （带 token）→ {r_ok.status_code}")
 
-    article = r_ok.json()
+    article = r_ok.json()["article"]
     slug = article["slug"]
     print(f"  创建成功: slug={slug}  author={article['author']}")
     print(f"  ⚠️ author 由 perform_create 注入，请求体里根本没传")

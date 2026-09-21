@@ -7,7 +7,8 @@ from . import views_generic, viewsets, views_auth
 router = DefaultRouter()
 router.register('articles', viewsets.ArticleViewSet, basename='article')
 router.register('tags', viewsets.TagViewSet, basename='tag')
-router.register('auth', views_auth.AuthViewSet, basename='auth')  
+router.register('auth', views_auth.AuthViewSet, basename='auth') 
+router.register('comments', viewsets.CommentViewSet, basename='comment') 
 
 # ===== Mixin 版本（对比用，路径加 /generic/ 前缀区分）=====
 generic_patterns = [

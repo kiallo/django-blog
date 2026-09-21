@@ -18,6 +18,7 @@ from rest_framework.exceptions import AuthenticationFailed
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 from .session_store import get_session_store
+from drf_spectacular.extensions import OpenApiAuthenticationExtension
 
 logger = logging.getLogger(__name__)
 
@@ -56,3 +57,23 @@ class RedisJWTAuthentication(JWTAuthentication):
             raise AuthenticationFailed("会话已失效，请重新登录")
 
         return result
+
+
+class RedisJWTAuthenticationScheme(OpenApiAuthenticationExtension):
+    """
+    告诉 drf-spectacular：RedisJWTAuthentication 对应 OpenAPI 的哪个安全方案
+
+    不写这个类，Swagger 页面右上角就不会出现 Authorize 按钮，
+    别人没法在文档页里直接调用需要登录的接口。
+
+    target_class 用**字符串**写类路径，避免写死导入顺序。
+    """
+    target_class = 'blog.authentication.RedisJWTAuthentication'
+    name = 'jwtAuth'
+
+    def get_security_definition(self, auto_schema):
+        return {
+            'type': 'http',
+            'scheme': 'bearer',
+            'bearerFormat': 'JWT',
+        }

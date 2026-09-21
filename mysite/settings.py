@@ -10,7 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
-from pathlib import Path
+import os
 from datetime import timedelta
 from pathlib import Path
 
@@ -21,13 +21,20 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-pf-*k_7kcrcjnlk+02##8y@%t=umba*v%hx%7!w80t1lkzt$#h'
+# ===== 从环境变量读取，带开发环境默认值 =====
+# 生产环境必须通过环境变量注入真实值
+SECRET_KEY = os.environ.get(
+    'DJANGO_SECRET_KEY',
+    'django-insecure-pf-*k_7kcrcjnlk+02##8y@%t=umba*v%hx%7!w80t1lkzt$#h',  # 仅开发用
+)
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.environ.get('DJANGO_DEBUG', 'True').lower() in ('1', 'true', 'yes')
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    host for host in
+    os.environ.get('DJANGO_ALLOWED_HOSTS', 'localhost,127.0.0.1').split(',')
+    if host
+]
 
 
 # Application definition
@@ -41,6 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework_simplejwt',
+    'drf_spectacular', 
     'blog',
 ]
 
@@ -83,6 +91,9 @@ REST_FRAMEWORK = {
         'rest_framework.filters.SearchFilter',
         'rest_framework.filters.OrderingFilter',
     ],
+
+    # OpenAPI schema 生成器（drf-spectacular 需要）
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
 MIDDLEWARE = [
@@ -200,3 +211,14 @@ REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
 REDIS_DB = 1
 REDIS_PASSWORD = None       # 没设密码就保持 None
+
+
+# ===== API 文档配置（drf-spectacular）=====
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Django 博客 API',
+    'DESCRIPTION': 'Django 6 + DRF 实现的博客后端，对标 FastAPI RealWorld 项目。',
+    'VERSION': '1.0.0',
+    'SERVE_INCLUDE_SCHEMA': False,       # /api/schema/ 本身不出现在文档里
+    'COMPONENT_SPLIT_REQUEST': True,     # 请求体和响应体拆成两个 schema（读写序列化器不同时必须开）
+    'SORT_OPERATIONS': False,            # 按代码顺序排列，而不是字母序
+}
