@@ -116,7 +116,7 @@ def show_drf_features():
 1. 可浏览的 API（Browsable API）:
    - 浏览器直接访问 API 地址，自动渲染 HTML 界面
    - 可以在页面上直接发送请求
-   - 访问: http://127.0.0.1:8000/api/v2/articles/
+   - 访问: http://127.0.0.1:18000/api/v2/articles/
 
 2. 自动文档:
    - DRF 自动生成 API 文档
@@ -141,7 +141,7 @@ if __name__ == "__main__":
     show_url_comparison()
     show_drf_features()
 
-    print("\n✅ 启动服务器: python manage.py runserver")
-    print("✅ 原生接口: http://127.0.0.1:8000/api/blog/articles/")
-    print("✅ DRF 接口: http://127.0.0.1:8000/api/v2/articles/")
-    print("✅ 浏览器登录: http://127.0.0.1:8000/api-auth/login/")
+    print("\n✅ 启动服务器: python manage.py runserver 18000")
+    print("✅ 原生接口: http://127.0.0.1:18000/api/blog/articles/")
+    print("✅ DRF 接口: http://127.0.0.1:18000/api/v2/articles/")
+    print("✅ 浏览器登录: http://127.0.0.1:18000/api-auth/login/")

@@ -116,6 +116,6 @@ if __name__ == "__main__":
     show_url_mapping()
     show_fastapi_vs_django()
 
-    print("\n✅ 运行服务器: python manage.py runserver")
-    print("✅ 访问接口: http://127.0.0.1:8000/api/blog/hello/")
-    print("✅ 管理后台: http://127.0.0.1:8000/admin/")
+    print("\n✅ 运行服务器: python manage.py runserver 18000")
+    print("✅ 访问接口: http://127.0.0.1:18000/api/blog/hello/")
+    print("✅ 管理后台: http://127.0.0.1:18000/admin/")

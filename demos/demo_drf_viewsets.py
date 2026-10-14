@@ -140,7 +140,7 @@ if __name__ == "__main__":
     smoke_test()
     show_mixins_cheatsheet()
 
-    print("✅ 启动服务器: python manage.py runserver")
-    print("✅ ViewSet 版: http://127.0.0.1:8000/api/v3/articles/")
-    print("✅ Mixin 版  : http://127.0.0.1:8000/api/v3/generic/articles/")
-    print("✅ API 首页  : http://127.0.0.1:8000/api/v3/")
+    print("✅ 启动服务器: python manage.py runserver 18000")
+    print("✅ ViewSet 版: http://127.0.0.1:18000/api/v3/articles/")
+    print("✅ Mixin 版  : http://127.0.0.1:18000/api/v3/generic/articles/")
+    print("✅ API 首页  : http://127.0.0.1:18000/api/v3/")

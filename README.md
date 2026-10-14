@@ -33,13 +33,15 @@ python manage.py migrate
 python manage.py createsuperuser
 
 # 6. 启动 {#6-启动  data-source-line="1214"}
-python manage.py runserver
+# ⚠️ 必须显式写 18000。Django 默认的 8000 落在 Windows 保留端口段里（约 1024–15000），
+#    会报 [WinError 10013] 权限不允许 —— 注意不是「端口已被占用」。
+python manage.py runserver 18000
 ``` {data-source-line="1216"}
 
 访问：
-- API 文档：http://127.0.0.1:8000/api/docs/
-- 管理后台：http://127.0.0.1:8000/admin/
-- API 根目录：http://127.0.0.1:8000/api/v3/
+- API 文档：http://127.0.0.1:18000/api/docs/
+- 管理后台：http://127.0.0.1:18000/admin/
+- API 根目录：http://127.0.0.1:18000/api/v3/
 
 ## 接口一览
 
@@ -70,12 +72,12 @@ python manage.py runserver
 
 ```bash
 # 1. 登录拿 token {#1-登录拿-token  data-source-line="1251"}
-curl -X POST http://127.0.0.1:8000/api/v3/auth/login/ \
+curl -X POST http://127.0.0.1:18000/api/v3/auth/login/ \
   -H "Content-Type: application/json" \
   -d '{"username":"yourname","password":"yourpass"}'
 
 # 2. 后续请求带上 access token {#2-后续请求带上-access-token  data-source-line="1256"}
-curl http://127.0.0.1:8000/api/v3/auth/me/ \
+curl http://127.0.0.1:18000/api/v3/auth/me/ \
   -H "Authorization: Bearer <access>"
 ``` {data-source-line="1259"}
 
