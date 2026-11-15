@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views
+from lessons import views_v1_native as views
 
 app_name = "blog"
 

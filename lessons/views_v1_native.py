@@ -1,7 +1,7 @@
 from django.shortcuts import render
 from django.http import JsonResponse
 from django.http import HttpResponse
-from .models import Article, Comment, Tag
+from blog.models import Article, Comment, Tag
 import json
 
 
