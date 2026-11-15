@@ -6,3 +6,5 @@ db.sqlite3
 .vscode/
 *.log
 response.json
+db.sqlite3.bak-*
+blog_*.sql

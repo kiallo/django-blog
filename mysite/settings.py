@@ -14,8 +14,13 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# 加载项目根目录的 .env；文件不存在时静默跳过，不抛异常
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -131,8 +136,20 @@ WSGI_APPLICATION = 'mysite.wsgi.application'
 
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': os.environ.get('MYSQL_DATABASE', 'blog'),
+        'USER': os.environ.get('MYSQL_USER', 'blog'),
+        'PASSWORD': os.environ.get('MYSQL_PASSWORD', 'blogpass'),
+        'HOST': os.environ.get('MYSQL_HOST', '127.0.0.1'),
+        'PORT': os.environ.get('MYSQL_PORT', '3307'),
+        'OPTIONS': {
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
+        'TEST': {
+            'NAME': 'test_blog',
+            'CHARSET': 'utf8mb4',
+        },
     }
 }
 
@@ -207,10 +224,10 @@ SIMPLE_JWT = {
 # 和 FastAPI 项目复用同一个 Redis 实例，用 db 号隔开：
 #   FastAPI 项目 → db 0
 #   Django 项目  → db 1
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
-REDIS_DB = 1
-REDIS_PASSWORD = None       # 没设密码就保持 None
+REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.environ.get('REDIS_PORT', '6379'))
+REDIS_DB = int(os.environ.get('REDIS_DB', '1'))
+REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD') or None
 
 
 # ===== API 文档配置（drf-spectacular）=====
