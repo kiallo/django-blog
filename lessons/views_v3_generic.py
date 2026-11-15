@@ -12,10 +12,10 @@ from rest_framework import generics, mixins, status
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
-from .models import Article
-from .pagination import ArticlePagination
-from .permissions import IsAuthorOrReadOnly
-from .serializers import (
+from blog.models import Article
+from blog.pagination import ArticlePagination
+from blog.permissions import IsAuthorOrReadOnly
+from blog.serializers import (
     ArticleDetailSerializer,
     ArticleListSerializer,
     ArticleWriteSerializer,

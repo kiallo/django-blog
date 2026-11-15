@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 
-from .models import Article, Tag, Comment
-from .serializers import (
+from blog.models import Article, Tag, Comment
+from blog.serializers import (
     ArticleListSerializer,
     ArticleDetailSerializer,
     ArticleCreateSerializer,

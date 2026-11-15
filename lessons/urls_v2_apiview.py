@@ -1,5 +1,5 @@
 from django.urls import path
-from . import views_drf
+from lessons import views_v2_apiview as views_drf
 
 app_name = "blog-api"
 
