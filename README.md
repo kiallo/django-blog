@@ -5,34 +5,56 @@
 
 ## 技术栈
 
-| 组件      | 选型                               |
-| --------- | ---------------------------------- |
-| 框架      | Django 6.1 + DRF 3.18              |
-| 认证      | JWT（simplejwt）+ Redis 白名单     |
-| 缓存/会话 | Redis                              |
-| 数据库    | SQLite（生产可换 PostgreSQL）      |
-| API 文档  | drf-spectacular（Swagger / ReDoc） |
+| 组件      | 选型                                 |
+| --------- | ------------------------------------ |
+| 框架      | Django 6.1 + DRF 3.18                |
+| 认证      | JWT（simplejwt）+ Redis 白名单       |
+| 缓存/会话 | Redis 7                              |
+| 数据库    | MySQL 8.4（Docker，宿主 3307）       |
+| API 文档  | drf-spectacular（Swagger / ReDoc）   |
+| 测试      | Django `TestCase` + DRF `APIClient`  |
 
 ## 快速开始
 
-````bash
-# 1. 创建虚拟环境 {#1-创建虚拟环境  data-source-line="1198"}
+```bash
+# 1. 创建虚拟环境
 python -m venv .venv
 .venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS / Linux {#source-venvbinactivate------macos--linux  data-source-line="1201"}
+# source .venv/bin/activate     # macOS / Linux
 
-# 2. 安装依赖 {#2-安装依赖  data-source-line="1203"}
+# 2. 安装依赖
 pip install -r requirements.txt
 
-# 3. 起 MySQL 与 Redis（见下节「本地起 MySQL + 跑测试」）
+# 3. 起 MySQL 与 Redis
+#    完整命令见下一节「本地起 MySQL + 跑测试」
+
+# 4. 建表
+python manage.py migrate
+
+# 5. 创建管理员
+python manage.py createsuperuser
+
+# 6. 启动
+# ⚠️ 端口必须显式指定。Django 默认的 8000 可能落在 Windows 的保留端口段里，
+#    会报 [WinError 10013] 权限不允许 —— 注意不是「端口已被占用」。
+#    保留段由 winnat 动态分配，会随 Docker / WSL 启停变化，报错就换一个端口。
+python manage.py runserver 18000
+```
+
+访问：
+
+- API 文档：http://127.0.0.1:18000/api/docs/
+- 管理后台：http://127.0.0.1:18000/admin/
+- API 根目录：http://127.0.0.1:18000/api/v3/
+
 ## 本地起 MySQL + 跑测试
 
-数据库已从 SQLite 迁移到 **MySQL 8.4**（Django 6.1 的硬性要求，8.0 会在 `migrate` 时报版本不支持），
-Redis 用独立容器。以下命令 Windows PowerShell / Git Bash 均可执行。
+数据库已从 SQLite 迁移到 **MySQL 8.4**（Django 6.1 的硬性要求，用 8.0 会在 `migrate`
+时报版本不支持），Redis 用独立容器。以下命令在 Windows PowerShell 与 Git Bash 中均可执行。
 
 ```bash
 # 1. 起 MySQL（宿主 3307 → 容器 3306）
-#    用 3307 是为了避开本机 3306 上可能已有的 MySQL 8.0
+#    用 3307 是为了避开本机 3306 上可能已有的 MySQL
 docker run -d --name blog-mysql \
   -e MYSQL_ROOT_PASSWORD=rootpass \
   -e MYSQL_DATABASE=blog \
@@ -42,22 +64,23 @@ docker run -d --name blog-mysql \
   mysql:8.4
 
 # 2. 起 Redis（宿主 16379 → 容器 6379）
-#    ⚠️ 不能用 6379：Windows 的 winnat 把 6289–6388 整段预留，
-#    绑定会报 "An attempt was made to access a socket in a way forbidden by its access permissions"
+#    ⚠️ 不要用 6379：Windows 的 winnat 会预留大段端口，绑定时会报
+#    "An attempt was made to access a socket in a way forbidden by its access permissions"
+#    保留段是动态的，16379 只是当前可用值
 docker run -d --name blog-redis -p 16379:6379 redis:7-alpine
 
 # 3. 授权测试库（Django 跑测试会 CREATE/DROP test_blog，必须单独授权）
 docker exec -it blog-mysql mysql -uroot -prootpass
-#   在 mysql> 提示符下执行这两条：
+#   在 mysql> 提示符下执行这两条，然后 exit：
 #     GRANT ALL PRIVILEGES ON `test_blog`.* TO 'blog'@'%';
 #     FLUSH PRIVILEGES;
-#   然后 exit
 
 # 4. 配置环境变量（.env 已在 .gitignore 里，不会进仓库）
 cp .env.example .env
 
-# 5. 建表 + 造演示数据（需要先有 kiallo 这个用户，见 demos/seed_demo_articles.py 第 35 行）
+# 5. 建表 + 造演示数据
 python manage.py migrate
+#    seed 脚本依赖用户 kiallo，空库要先建
 python manage.py shell -c "from django.contrib.auth.models import User; User.objects.get_or_create(username='kiallo', defaults={'is_staff': True, 'is_superuser': True})"
 python demos/seed_demo_articles.py
 
@@ -68,23 +91,25 @@ python manage.py test
 pip install coverage
 coverage run manage.py test
 coverage report -m --include="blog/*"
+```
 
-# 4. 建表 {#4-建表  data-source-line="1208"}
-python manage.py migrate
+容器不会开机自启，机器重启后手动拉起：
 
-# 5. 创建管理员 {#5-创建管理员  data-source-line="1211"}
-python manage.py createsuperuser
+```bash
+docker start blog-mysql blog-redis
+```
 
-# 6. 启动 {#6-启动  data-source-line="1214"}
-# ⚠️ 必须显式写 18000。Django 默认的 8000 落在 Windows 保留端口段里（约 1024–15000），
-#    会报 [WinError 10013] 权限不允许 —— 注意不是「端口已被占用」。
-python manage.py runserver 18000
-``` {data-source-line="1216"}
+**测试设计要点**
 
-访问：
-- API 文档：http://127.0.0.1:18000/api/docs/
-- 管理后台：http://127.0.0.1:18000/admin/
-- API 根目录：http://127.0.0.1:18000/api/v3/
+- 62 个用例分布在 `blog/tests/` 的 6 个文件，按关注点拆分（模型 / 认证 / 权限 / 文章 / 评论 / 收藏）
+- 全部使用 `fakeredis`，不连真实 Redis，可离线运行；单次全量约 13 秒
+- `blog/tests/base.py` 做两件事：覆盖 `HTTP_HOST`（`ALLOWED_HOSTS` 不含 `testserver`，
+  否则所有请求会被 `DisallowedHost` 拦成 400）、替换 `session_store` 的两个模块级单例
+- `blog/` 覆盖率 **93%**（1029 行，76 行未覆盖）。剩余短板是 `session_store.py`（66%，
+  Redis 异常分支）和 `views_auth.py`（74%，`my_session` / `force_logout` / `online`
+  三个管理员接口）；主实现 `viewsets.py` 为 100%
+- 第 7–10 课的三套教学实现（原生视图 / `APIView` / Mixin）已移到 `lessons/`，
+  不参与运行，也不计入覆盖率
 
 ## 接口一览
 
@@ -114,15 +139,15 @@ python manage.py runserver 18000
 ## 认证方式
 
 ```bash
-# 1. 登录拿 token {#1-登录拿-token  data-source-line="1251"}
+# 1. 登录拿 token
 curl -X POST http://127.0.0.1:18000/api/v3/auth/login/ \
   -H "Content-Type: application/json" \
   -d '{"username":"yourname","password":"yourpass"}'
 
-# 2. 后续请求带上 access token {#2-后续请求带上-access-token  data-source-line="1256"}
+# 2. 后续请求带上 access token
 curl http://127.0.0.1:18000/api/v3/auth/me/ \
   -H "Authorization: Bearer <access>"
-``` {data-source-line="1259"}
+```
 
 ## 设计要点
 
@@ -132,10 +157,11 @@ curl http://127.0.0.1:18000/api/v3/auth/me/ \
   `ArticleWriteSerializer`（写入校验），由 `get_serializer_class()` 按 `self.action` 分发。
 - **统一响应契约**：单个资源 `{"article": {...}}`，列表 `{"articles": [...], "articlesCount": n}`。
 - **N+1 防治**：`select_related('author')` + `prefetch_related('tags', 'favorited_by')`。
+- **教学实现与正式实现分离**：第 7–10 课的三套旧实现移到 `lessons/`，
+  `blog/` 只保留 `viewsets.py` 这一套正式实现。
 
 ## 验收
 
 ```bash
 python demos/verify_week2.py     # 10 条验收标准自动跑
-``` {data-source-line="1274"}
-````
+```
