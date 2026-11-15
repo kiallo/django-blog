@@ -24,7 +24,50 @@ python -m venv .venv
 # 2. 安装依赖 {#2-安装依赖  data-source-line="1203"}
 pip install -r requirements.txt
 
-# 3. 启动 Redis（本机 6379） {#3-启动-redis本机-6379  data-source-line="1206"}
+# 3. 起 MySQL 与 Redis（见下节「本地起 MySQL + 跑测试」）
+## 本地起 MySQL + 跑测试
+
+数据库已从 SQLite 迁移到 **MySQL 8.4**（Django 6.1 的硬性要求，8.0 会在 `migrate` 时报版本不支持），
+Redis 用独立容器。以下命令 Windows PowerShell / Git Bash 均可执行。
+
+```bash
+# 1. 起 MySQL（宿主 3307 → 容器 3306）
+#    用 3307 是为了避开本机 3306 上可能已有的 MySQL 8.0
+docker run -d --name blog-mysql \
+  -e MYSQL_ROOT_PASSWORD=rootpass \
+  -e MYSQL_DATABASE=blog \
+  -e MYSQL_USER=blog \
+  -e MYSQL_PASSWORD=blogpass \
+  -p 3307:3306 \
+  mysql:8.4
+
+# 2. 起 Redis（宿主 16379 → 容器 6379）
+#    ⚠️ 不能用 6379：Windows 的 winnat 把 6289–6388 整段预留，
+#    绑定会报 "An attempt was made to access a socket in a way forbidden by its access permissions"
+docker run -d --name blog-redis -p 16379:6379 redis:7-alpine
+
+# 3. 授权测试库（Django 跑测试会 CREATE/DROP test_blog，必须单独授权）
+docker exec -it blog-mysql mysql -uroot -prootpass
+#   在 mysql> 提示符下执行这两条：
+#     GRANT ALL PRIVILEGES ON `test_blog`.* TO 'blog'@'%';
+#     FLUSH PRIVILEGES;
+#   然后 exit
+
+# 4. 配置环境变量（.env 已在 .gitignore 里，不会进仓库）
+cp .env.example .env
+
+# 5. 建表 + 造演示数据（需要先有 kiallo 这个用户，见 demos/seed_demo_articles.py 第 35 行）
+python manage.py migrate
+python manage.py shell -c "from django.contrib.auth.models import User; User.objects.get_or_create(username='kiallo', defaults={'is_staff': True, 'is_superuser': True})"
+python demos/seed_demo_articles.py
+
+# 6. 跑测试（62 个用例，全程 fakeredis，不需要 Redis 真的在跑）
+python manage.py test
+
+# 7. 覆盖率
+pip install coverage
+coverage run manage.py test
+coverage report -m --include="blog/*"
 
 # 4. 建表 {#4-建表  data-source-line="1208"}
 python manage.py migrate
