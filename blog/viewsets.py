@@ -91,15 +91,22 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         """
-        三种动作三套规则：
+        四种动作四套规则：
 
+        - comments  : 读匿名、写登录。
+                      ⚠️ 这里**不能**走 super()：super() 会带上类级的
+                      IsAuthorOrAdminOrReadOnly，而 comments() 内部调了
+                      self.get_object()，对象级权限会对 POST 做检查，
+                      非文章作者评论会被误判成 403。
+                      所以只给 IsAuthenticatedOrReadOnly —— 它按
+                      request.method 判断：SAFE_METHODS 放行，写操作要求登录。
         - favorite  : 收藏别人的文章 → 只要登录，不要文章作者身份
-        - comments  : 对文章只做读取，不修改文章 → 只要登录（不满足的话会被
-                      get_object() 里的对象级权限误判成 403）
         - feed      : 只看自己的关注流 → 只要登录
         - 其余      : 走类级配置（IsAuthenticatedOrReadOnly + IsAuthorOrAdminOrReadOnly）
         """
-        if self.action in ('favorite', 'feed', 'comments'):
+        if self.action == 'comments':
+            return [IsAuthenticatedOrReadOnly()]
+        if self.action in ('favorite', 'feed'):
             return [IsAuthenticated()]
         return super().get_permissions()
 

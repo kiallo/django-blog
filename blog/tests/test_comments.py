@@ -1,17 +1,19 @@
 """
 评论接口测试：嵌套路由（挂在文章下）+ 顶层资源（只有详情/改/删）。
 
-⚠️ 两条路由的权限不一致，这是代码当前行为，测试如实锁住：
+权限设计（改过一版，现在是统一的「读匿名、写登录」）：
 
-  · GET /articles/<slug>/comments/   → 需要登录
-    因为 comments 是 @action，get_permissions 里
-    `if self.action in ('favorite', 'feed', 'comments')` 把它整体划进 IsAuthenticated。
+  · GET  /articles/<slug>/comments/  → 匿名可读
+    靠 ArticleViewSet.get_permissions 里单独给 comments 动作返回
+    [IsAuthenticatedOrReadOnly()]，不带任何对象级权限。
 
-  · GET /comments/<id>/              → 匿名可读
-    CommentViewSet 的权限是 IsAuthenticatedOrReadOnly，GET 属于 SAFE_METHODS。
+  · POST /articles/<slug>/comments/  → 必须登录（未认证返回 401）
+    如果这里误把 comments 交给 super()，类级的 IsAuthorOrAdminOrReadOnly
+    会在 get_object() 阶段对 POST 做对象级检查，非文章作者评论会变成 403。
+    test_create_comment_wrapped_format 用的正是「非作者」身份，
+    它能过，就说明对象级权限没有被误加进来。
 
-如果你以后认为评论列表也应该公开，改 get_permissions 之后，
-test_list_comments_requires_auth 会红 —— 那是提醒你契约变了，不是测试坏了。
+  · GET  /comments/<id>/             → 匿名可读（CommentViewSet 是 IsAuthenticatedOrReadOnly）
 """
 from django.contrib.auth.models import User
 from rest_framework import status
@@ -37,10 +39,11 @@ class CommentTests(BaseAPITestCase):
 
     # ---------- 嵌套路由：/articles/<slug>/comments/ ----------
 
-    def test_list_comments_requires_auth(self):
-        """comments 动作被划进 IsAuthenticated，GET 也不例外"""
+    def test_list_comments_allows_anonymous(self):
+        """读匿名：comments 动作的权限是 IsAuthenticatedOrReadOnly，GET 属于 SAFE_METHODS"""
         resp = self.client.get(f'/api/v3/articles/{self.article.slug}/comments/')
-        self.assertEqual(resp.status_code, status.HTTP_401_UNAUTHORIZED)
+        self.assertEqual(resp.status_code, status.HTTP_200_OK)
+        self.assertEqual(resp.data['commentsCount'], 2)
 
     def test_list_comments_returns_count(self):
         self.client.force_authenticate(self.reader)
